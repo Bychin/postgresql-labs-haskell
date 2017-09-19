@@ -62,7 +62,7 @@ loop conn = do
 
 main :: IO ()
 main = do
-   conn <- connectdb "host='195.19.32.74' port=5432 dbname='fn1132_2017' user='student' password='bmstu'"
+   conn <- connectdb "host='195.19.32.74' port=5432 dbname='fn1132_2017' user='student' password='bmstu'" --LOL it's on github :-P
    checked <- status conn
    case checked of
      ConnectionOk -> do
