@@ -38,10 +38,13 @@ process line conn = do
         TuplesOk -> do
           rowNum <- ntuples result
           colNum <- nfields result
-          cfor' 0 (pure $ \i -> i < rowNum) (+1) $ \i ->
-            cfor' 0 (pure $ \j -> j < colNum) (+1) $ \j -> do
-              val <- getvalue result i j
-              println $ show val
+          
+          let ij = [0,1..rowNum-1] >>= \i ->
+            [0,1..colNum-1] >>= \j -> (i,j)
+          
+          _mapM (\(i,j)-> println . show =<< getvalue result i j) ij
+             
+       
 
         _ -> pure ()
       
