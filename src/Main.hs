@@ -9,23 +9,11 @@ import qualified Data.ByteString.Char8 as BS
 import Control.Exception
 import Database.PostgreSQL.LibPQ
 import Common
+import Control.Monad
 
 
-process line conn = do
+process line{-cur line-} conn{-connection handle-} = do
  
-
-  --table_create_res <- query_ conn "create table test11112222(id integer)" :: IO [[Maybe String]]
-
-  {-execute_ conn "insert into test11112222 values (2)"
-
-  let trySel = do
-         xs <- query_ conn "select * from test11112222" :: IO [[Maybe Int]]
-         println . show $ xs
-
-  result <- try ( trySel ) :: IO (Either SqlError ())
-  case result of
-    Left ex -> println $ show ex
-    Right normal -> println "ok"-}
 
   mresult <- exec conn $ BS.pack line
   case mresult of
@@ -40,10 +28,12 @@ process line conn = do
           rowNum <- ntuples result
           colNum <- nfields result
           
-          let ij = [0,1..rowNum-1] >>= \i ->
-            [0,1..colNum-1] >>= \j -> (i,j)
+          let ij = [0,1..rowNum-1] >>= 
+                \i -> [0,1..colNum-1] >>=
+                \j -> [(i,j)] 
+          {- same as: let ij = [(i,j) | i <- [0,1..rowNum-1], j <- [0,1..colNum-1]] -}
           
-          _mapM (\(i,j)-> println . show =<< getvalue result i j) ij
+          mapM_ (\(i,j)-> println . show =<< getvalue result i j) ij
              
        
 
