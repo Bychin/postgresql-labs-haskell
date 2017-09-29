@@ -34,7 +34,8 @@ process line conn = do
       println $ "command status = " ++ show exec_status 
       case exec_status of
         FatalError ->
-          resultErrorMessage result >>= \(Just x) -> (println . show)x --bad show
+          --resultErrorMessage result >>= \(Just x) -> (println . show)x --bad show
+          pure ()
         TuplesOk -> do
           rowNum <- ntuples result
           colNum <- nfields result
