@@ -35,10 +35,11 @@ process line{-cur line-} conn{-connection handle-} = do
 
           let i_col = [i | i <- [0,1..colNum-1]]
           --mapM_ (\i -> putStrLn . show =<< BS.unpack $ fname result i) i_col
-          mapM_ (\i-> fname result i >>= \(Just x) -> println $ show x) i_col
+          mapM_ (\i-> fname result i >>= \(Just x) -> putStr $ BS.unpack x) i_col
+          putStrLn "\n"
           
           --mapM_ (\(i,j)-> println . show =<< getvalue result i j) ij
-          mapM_ (\(i,j)-> getvalue result i j >>= \(Just x) -> println $ show x) ij
+          mapM_ (\(i,j)-> getvalue result i j >>= \(Just x) -> if (j /= colNum - 1) then putStr $ BS.unpack x else putStrLn $ BS.unpack x) ij
              
        
 
