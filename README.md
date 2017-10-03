@@ -7,4 +7,4 @@ Work in progress:
 Bash script
 GUI (Qt)
 
-https://pastebin.com/hyMMJ9ht
+https://pastebin.com/hyMMJ9ht --DONE
