@@ -31,76 +31,83 @@ process line{-cur line-} conn{-connection handle-} = do
           colNum <- nfields result
 
           let
-            mkListCol i = mapM (\j -> getvalue result j i >>= \(Just x) -> pure $ BS.unpack x) [0,1..rowNum-1]
-            mkList i = if colNum /= i  --usage mkList 0, returns table in this form : [[elems of col 0], [elems of col 1], ...]
+            mkContentCol i = mapM (\j -> getvalue result j i >>= \(Just x) -> pure $ BS.unpack x) [0,1..rowNum-1]
+            mkContent i = if colNum /= i  --usage mkList 0, returns table in this form : [[elems of col 0], [elems of col 1], ...]
               then do
-                next <- mkList (i + 1)
-                a <- mkListCol i
-                pure (a : next)
+                _a <- mkContentCol i
+                _b <- mkContent (i + 1)
+                pure (_a : _b)
               else pure []
 
 
-            mkListHead i = do        --same as mkList but for entry names : [[name0], [name1], ...]
+            mkHead i = do        --same as mkList but for entry names : [[name0], [name1], ...]
               if colNum /= i then do
                 _a <- fname result i >>= \(Just x)-> pure $ BS.unpack x
-                _b <- mkListHead (i+1)
+                _b <- mkHead (i+1)
                 pure $ [_a] : _b
               else
                 pure []
 
 
+            mergeContentAndHead [] [] = [] --this is needed later to calculate the max length of each column (including head !)
+            mergeContentAndHead (con0 : con){-content-} ((head0 : _) : head){-head-} = (head0 : con0) : mergeContentAndHead con head
+
             lengthsFun [] = [] --returns list of this form : [max len of elems of column 0, max len of elems of column 1, ...]
             lengthsFun (x : xs) = (length $ maximumBy (comparing length) x) : lengthsFun xs
 
-            putPluses 0 = putStr " + "
+            putPluses 0 = putStr "+"
             putPluses n = do {putStr "-"; putPluses (n-1)}
 
             putSpaces 0 = putStr "| "
             putSpaces n = do {putStr " "; putSpaces (n-1)}
 
-          _list <- mkList 0
-          let lens_ =  lengthsFun _list
+          _content <- mkContent 0
+          _head    <- mkHead 0
+          let _lens =  lengthsFun $ mergeContentAndHead _content _head
 
           let _CONST_SPACES = 3
           
           let
-            printer1 [] [] = pure []
-            printer1 (x : xs){-table-} (l : ls){-lengths-} =
+            printRow [] [] = pure []  --print one row of the table, does not print \n at the end
+            printRow (x : xs){-table-} (l : ls){-lengths-} =
               case x of
                 (e : es) -> do
                   putStr e
                   let elen = length e
                   putSpaces (l - elen + _CONST_SPACES) 
-                  
-                  next <- printer1 xs ls
+                  next <- printRow xs ls
                   pure $ es : next
                 [] -> pure []
 
-            printer2 [] [] = pure [] --bad realisation for nice pixel-graphic output (--- + --- +)
-            printer2 (x : xs){-table-} (l : ls){-lengths-} =
-              case x of
-                (e : es) -> do
+            printCosmetics [] = pure () --bad realization for nice pixel-graphic output (---+---+)
+            printCosmetics (l : ls){-lengths-} = do
+               putPluses (l + 1 + _CONST_SPACES) 
+               next <- printCosmetics ls
+               pure ()
 
-                  putPluses (l - 1 + _CONST_SPACES) 
-                  
-                  next <- printer2 xs ls
-                  pure $ es : next
-                [] -> pure []
-
-            printer [] = pure ()
-            printer table = do
-              next <- printer1 table lens_
-              putStr "\n"
+            printTable [] = pure () --print full table (this is called for head and content separately)
+            printTable table = do
+              next <- printRow table _lens
               case next of
-                xs@(x : xs') -> printer xs
-                [] -> printer [] 
+                (x : xs') ->
+                  case x of
+                   (_ : _) -> do
+                     putStr "\n"
+                     printTablePadded next
+                   [] -> pure ()
+                [] -> pure ()
 
+            printTablePadded [] = pure () --same as printTable but first column is padded with one ' '
+            printTablePadded table = do {putStr " "; printTable table}
 
+          
+          printTablePadded _head
+          putStr "\n"
+          printCosmetics _lens
+          putStr "\n"
+          printTablePadded _content
+          putStr "\n"
 
-          printer =<< mkListHead 0
-          printer2 _list lens_ --_list makes no sense except iteration amount
-          putStrLn "" --should use this because of awful printer2
-          printer _list
 
           pure ()
         _ -> pure ()
