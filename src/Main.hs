@@ -20,28 +20,15 @@ process line{-cur line-} conn{-connection handle-} = do
   case mresult of
     Just result -> do
       exec_status <- resultStatus result
-      println $ "command status = " ++ show exec_status 
+      println $ "Command status = " ++ show exec_status 
       case exec_status of
         FatalError ->
-          --resultErrorMessage result >>= \(Just x) -> (println . show)x --bad show
           pure ()
+          --resultErrorMessage result >>= \(Just x) -> (println . show)x --bad show
+          
         TuplesOk -> do
           rowNum <- ntuples result
           colNum <- nfields result
-          
-          {-let ij = [0,1..rowNum-1] >>= 
-                \i -> [0,1..colNum-1] >>=
-                \j -> [(i,j)] 
-          {- same as: let ij = [(i,j) | i <- [0,1..rowNum-1], j <- [0,1..colNum-1]] -}
-
-          let i_col = [i | i <- [0,1..colNum-1]]
-          --mapM_ (\i -> putStrLn . show =<< BS.unpack $ fname result i) i_col
-          mapM_ (\i-> fname result i >>= \(Just x) -> putStr $ BS.unpack x) i_col
-          putStrLn "\n"
-          
-          --mapM_ (\(i,j)-> println . show =<< getvalue result i j) ij
-          mapM_ (\(i,j)-> getvalue result i j >>= \(Just x) ->
-                    if (j /= colNum - 1) then putStr $ BS.unpack x else putStrLn $ BS.unpack x) ij -}
 
           let
             mkListCol i = mapM (\j -> getvalue result j i >>= \(Just x) -> pure $ BS.unpack x) [0,1..rowNum-1]
@@ -61,16 +48,20 @@ process line{-cur line-} conn{-connection handle-} = do
               else
                 pure []
 
+
             lengthsFun [] = [] --returns list of this form : [max len of elems of column 0, max len of elems of column 1, ...]
             lengthsFun (x : xs) = (length $ maximumBy (comparing length) x) : lengthsFun xs
 
-            putSpaces 0 = pure ()
+            putPluses 0 = putStr " + "
+            putPluses n = do {putStr "-"; putPluses (n-1)}
+
+            putSpaces 0 = putStr "| "
             putSpaces n = do {putStr " "; putSpaces (n-1)}
 
           _list <- mkList 0
           let lens_ =  lengthsFun _list
 
-          let _CONST_SPACES = 5
+          let _CONST_SPACES = 3
           
           let
             printer1 [] [] = pure []
@@ -85,6 +76,17 @@ process line{-cur line-} conn{-connection handle-} = do
                   pure $ es : next
                 [] -> pure []
 
+            printer2 [] [] = pure [] --bad realisation for nice pixel-graphic output (--- + --- +)
+            printer2 (x : xs){-table-} (l : ls){-lengths-} =
+              case x of
+                (e : es) -> do
+
+                  putPluses (l - 1 + _CONST_SPACES) 
+                  
+                  next <- printer2 xs ls
+                  pure $ es : next
+                [] -> pure []
+
             printer [] = pure ()
             printer table = do
               next <- printer1 table lens_
@@ -93,14 +95,18 @@ process line{-cur line-} conn{-connection handle-} = do
                 xs@(x : xs') -> printer xs
                 [] -> printer [] 
 
+
+
           printer =<< mkListHead 0
+          printer2 _list lens_ --_list makes no sense except iteration amount
+          putStrLn "" --should use this because of awful printer2
           printer _list
 
           pure ()
         _ -> pure ()
       
     Nothing ->
-      println "no result"
+      println "No result"
   
   pure ()
   
@@ -108,7 +114,7 @@ process line{-cur line-} conn{-connection handle-} = do
 loop conn = do
   println $ "Enter your query or 'exit'"
   line <- getLine
-  println $ "you entered: " ++ line
+  println $ "You entered: " ++ line
 
   if line == "exit" then pure () else do {process line conn; loop conn}
       
@@ -116,12 +122,13 @@ loop conn = do
 
 main :: IO ()
 main = do
-   conn <- connectdb "host='195.19.32.74' port=5432 dbname='fn1132_2017' user='student' password='bmstu'" --LOL it's on github :-P
+   conn <- connectdb "host='0.0.0.0' port=32768 dbname='docker' user='docker' password='docker'" --local docker
    checked <- status conn
    case checked of
      ConnectionOk -> do
-       println "connected to db"
+       println "Succesfully connected to db"
        loop conn
      _ -> do
-       println "connection failed"
-   
+       println "Connection failed!"
+   finish conn
+   println "Goodbye!"
