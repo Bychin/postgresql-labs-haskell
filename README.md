@@ -8,7 +8,7 @@ Use provided bash script to set your connection's settings:
 ```
 
 ### Docker usage helper:
-* First you need to run your docker container with name 'pg_test' using image 'eg_postgreaql':
+* First you need to run your docker container with name 'pg_test' using image 'eg_postgresql':
  ```
 sudo docker run --rm -P --name pg_test eg_postgresql
 ```
