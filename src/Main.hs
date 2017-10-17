@@ -13,6 +13,9 @@ import Control.Monad
 import Data.Ord
 import Data.List
 
+
+--import Graphics.UI.WX
+
 process line{-cur line-} conn{-connection handle-} = do
  
 
@@ -22,9 +25,9 @@ process line{-cur line-} conn{-connection handle-} = do
       exec_status <- resultStatus result
       println $ "Command status = " ++ show exec_status 
       case exec_status of
-        FatalError ->
+        FatalError -> do
           pure ()
-          --resultErrorMessage result >>= \(Just x) -> (println . show)x --bad show
+          resultErrorMessage result >>= \(Just x) -> (println . BS.unpack)x --bad show
           
         TuplesOk -> do
           rowNum <- ntuples result
