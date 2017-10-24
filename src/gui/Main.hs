@@ -145,59 +145,10 @@ cmd = do
    finish conn
    println "Goodbye!"
 
+
 main :: IO ()
 main
   = start gui
-
-hello :: IO ()
-hello
-  = do f    <- frame    [text := "Hello!"]
-       quit <- button f [text := "Quit", on command := close f]
-       set f [layout := widget quit]
-
-       
-hello1 :: IO ()
-hello1
-  = do -- the application frame
-       f      <- frame         [text := "Hello world!", clientSize := sz 300 200]                               
-
-       -- create file menu  
-       file   <- menuPane      [text := "&File"]
-       _quit  <- menuQuit file [help := "Quit the demo", on command := close f]
-
-       -- create Help menu
-       hlp    <- menuHelp      []
-       about  <- menuAbout hlp [help := "About wxHaskell"]
-
-       -- create statusbar field
-       status <- statusField   [text := "Welcome to wxHaskell"]
-
-       -- set the statusbar and menubar
-       set f [ statusBar := [status]
-             , menuBar   := [file,hlp]
-             -- as an example, put the menu event handler for an about box on the frame.
-             ,on (menu about) := infoDialog f "About wxHaskell" "This is a wxHaskell demo"
-             ]
-
-hello2 :: IO ()
-hello2
-  = do f      <- frame  [text := "Layout test"]
-       p      <- panel  f []                       -- panel for color and tab management.
-       ok     <- button p [text := "Ok", on command := close f]
-       can    <- button p [text := "Cancel", on command := infoDialog f "Info" "Pressed 'Cancel'"]
-       xinput <- textEntry p [text := "100", alignment := AlignRight]
-       yinput <- textEntry p [text := "100", alignment := AlignRight]
-       zinput <- textEntry p [text := "100", alignment := AlignRight]
-
-       set f [defaultButton := ok
-             ,layout := container p $
-                        margin 10 $
-                        column 5 [boxed "coordinates" (grid 5 5 [[label "x:", hfill $ widget xinput]
-                                                                ,[label "y:", hfill $ widget yinput]
-                                                                ,[label "z:", hfill $ widget zinput]])
-                                 ,floatBottomRight $ row 5 [widget ok,widget can]]
-             ] 
-       return ()
 
 
 gui :: IO ()
@@ -207,7 +158,8 @@ gui
        -- use text control as logger
        textlog <- textCtrl f [wrap := WrapNone, enabled := False] 
        textCtrlMakeLogActiveTarget textlog
-       logMessage "logging enabled"              
+       logMessage "logging enabled"
+       logMessage "lolololol"             
 
        -- grids
        g <- gridCtrl f []
@@ -217,10 +169,10 @@ gui
        appendRows    g (map show [1..length (tail names)])
        mapM_ (setRow g) (zip [0..] (tail names))
        gridAutoSize g
-
+       
        -- layout
-       set f [layout := column 5 [fill (static (widget g))
-                                 ,hfill $ minsize (sz 20 80) $ widget textlog]
+       set f [layout := column 5 [fill (dynamic (widget g))
+                                  ,hfill $ minsize (sz 20 80) $ widget textlog]
              ]       
        focusOn g
        set f [visible := True]  -- reduce flicker at startup.
@@ -238,9 +190,6 @@ setRow g (row_, values)
   = mapM_ (\(col,value_) -> gridSetCellValue g row_ col value_) (zip [0..] values)
 
 
-{--------------------------------------------------------------------------------
-   Library?
---------------------------------------------------------------------------------}
 
 gridCtrl :: Window a -> [Prop (Grid ())] -> IO (Grid ())
 gridCtrl parent_ props_
@@ -249,13 +198,8 @@ gridCtrl parent_ props_
     do g <- gridCreate parent_ id_ rect' flags
        gridCreateGrid g 0 0 0
        set g props'
+       gridEnableEditing g False
        return g
-
-gridEvent :: Event (Grid a) (EventGrid -> IO ())
-gridEvent
-  = newEvent "gridEvent" gridGetOnGridEvent gridOnGridEvent
-
-
 
 appendColumns :: Grid a -> [String] -> IO ()
 appendColumns _g []
