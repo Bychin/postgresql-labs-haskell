@@ -14,7 +14,9 @@ import Data.Ord
 import Data.List
 
 
---import Graphics.UI.WX
+import Graphics.UI.WX --base
+import Graphics.UI.WXCore hiding (Event) --low level
+--import Graphics.UI.WX.Event
 
 process line{-cur line-} conn{-connection handle-} = do
  
@@ -130,8 +132,8 @@ loop conn = do
       
       
 
-main :: IO ()
-main = do
+cmd :: IO ()
+cmd = do
    conn <- connectdb "host='0.0.0.0' port=32768 dbname='docker' user='docker' password='docker'" --local docker
    checked <- status conn
    case checked of
@@ -142,3 +144,8 @@ main = do
        println "Connection failed!"
    finish conn
    println "Goodbye!"
+
+main :: IO ()
+main = cmd
+
+
