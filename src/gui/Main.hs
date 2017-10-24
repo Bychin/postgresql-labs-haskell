@@ -218,29 +218,13 @@ gui
        mapM_ (setRow g) (zip [0..] (tail names))
        gridAutoSize g
 
-       windowOnKeyDown g (onGridKeyDown g)
-       set g [on gridEvent := onGrid]
-
        -- layout
-       set f [layout := column 5 [fill (dynamic (widget g))
+       set f [layout := column 5 [fill (static (widget g))
                                  ,hfill $ minsize (sz 20 80) $ widget textlog]
              ]       
        focusOn g
        set f [visible := True]  -- reduce flicker at startup.
        return ()
-  where
-    onGridKeyDown g (EventKey key_ _mods _pt)
-      = case key_ of
-          KeyReturn ->          
-            do logMessage "keyEnter"
-               gridMoveNext g
-          _ -> propagateEvent
-
-    onGrid ev
-      = case ev of
-          GridCellChange row_ col_ _veto
-            -> logMessage ("cell changed: " ++ show (row_, col_))
-          _ -> propagateEvent
 
 names :: [[String]]
 names
@@ -271,20 +255,6 @@ gridEvent :: Event (Grid a) (EventGrid -> IO ())
 gridEvent
   = newEvent "gridEvent" gridGetOnGridEvent gridOnGridEvent
 
-
-gridMoveNext :: Grid a -> IO ()
-gridMoveNext g
-  = do row_ <- gridGetGridCursorRow g
-       col_ <- gridGetGridCursorCol g
-       rowCount <- gridGetNumberRows g
-       colCount <- gridGetNumberCols g
-       let (r,c) = if (row_ + 1 >= rowCount)
-                    then if (col_ + 1 >= colCount)
-                     then (0, 0)
-                     else (0, col_ + 1)
-                    else (row_ + 1, col_)
-       gridSetGridCursor g r c
-       gridMakeCellVisible g r c
 
 
 appendColumns :: Grid a -> [String] -> IO ()
