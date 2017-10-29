@@ -5,10 +5,11 @@ Simple shell-client and GUI-client (in the future) for your PostgreSQL database.
 Use `db-setup.sh` bash script which will:
 * launch docker container (with name of `container_name` constant and using image name from `image_name` constant),
 * add your connection to `~/.pgpass` file (with {database, user, password} = `docker`),
-* launch `psql` with `-f` using `commands_for_sql` constant (`./db-setup-commands.sql` is set to default),
+* launch `psql -f` using `commands_for_sql` constant (`./db-setup-commands.sql` is set to default),
 * setup connections in `Main.hs` files from `cmd` and `gui` using `db-setter.sh`,
 * build both projects using `stack build`,
-* open new terminal tab for You (`gnome-terminal`).
+* open new terminal tab for You (`gnome-terminal`),
+* wait for Your `stop` command which will stop docker container and undo changes in `~/.pgpass`.
 
 Then You can work with your database using our client (`stack exec cmd` or `stack exec gui`).
 
