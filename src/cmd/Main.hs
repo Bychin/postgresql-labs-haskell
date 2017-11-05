@@ -14,9 +14,6 @@ import Data.Ord
 import Data.List
 
 
-import Graphics.UI.WX --base
-import Graphics.UI.WXCore hiding (Event) --low level
---import Graphics.UI.WX.Event
 
 process line{-cur line-} conn{-connection handle-} = do
  
