@@ -14,9 +14,7 @@ import Data.Ord
 import Data.List
 
 
-
 process line{-cur line-} conn{-connection handle-} = do
- 
 
   mresult <- exec conn $ BS.pack line
   case mresult of
@@ -131,18 +129,16 @@ loop conn = do
 
 cmd :: IO ()
 cmd = do
-    conn <- connectdb "host='0.0.0.0' port=32775 dbname='docker' user='docker' password='docker'"
-    checked <- status conn
-    case checked of
-      ConnectionOk -> do
-        println "Succesfully connected to db"
-        loop conn
-      _ -> do
-        println "Connection failed!"
-    finish conn
-    println "Goodbye!"
+  conn <- connectdb "host='0.0.0.0' port=32773 dbname='docker' user='docker' password='docker'"
+  checked <- status conn
+  case checked of
+    ConnectionOk -> do
+      println "Succesfully connected to db"
+      loop conn
+    _ -> do
+      println "Connection failed!"
+  finish conn
+  println "Goodbye!"
 
 main :: IO ()
 main = cmd
-
-
