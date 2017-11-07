@@ -16,9 +16,10 @@ import Text.Printf --printf
 import Control.Concurrent.MVar
 
 
+import Graphics.UI.WX
+import Graphics.UI.WXCore hiding (Event)
 
-
-
+process line conn = do
   mresult <- exec conn $ BS.pack line
   case mresult of
     Just result -> do
