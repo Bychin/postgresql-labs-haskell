@@ -151,7 +151,7 @@ cmd = do
 main :: IO ()
 main = do 
   --conn <- connectdb ""
-  my_conn <- newEmptyMVar
+  myConn <- newEmptyMVar
   start $ gui myConn
   --finish conn
 
@@ -175,7 +175,13 @@ guiConnection boxedConn
     user     <- get userInput text
     password <- get passwordInput text
 
-    set okButton [on command := do { connectDatabase boxedConn host port dbname user password; }]
+    set okButton [on command :=
+                  do connectDatabase boxedConn (get hostInput text)
+                                               (get portInput text)
+                                               (get dbnameInput text)
+                                               (get userInput text)
+                                               (get passwordInput text)
+                     checkConnection boxedConn f]
     --set s [on command := do{ i <- get s selection; set g [selection := i]} ]
 
     set f [defaultButton := okButton
@@ -191,18 +197,30 @@ guiConnection boxedConn
     return ()
 
   where
-    connectDatabase :: MVar Database.PostgreSQL.LibPQ.Connection -> String -> String -> String -> String -> String -> IO ()
-    connectDatabase conn h p db u pass
-      = do
-        --readMVar conn >>= finish --finish conn; -- in case of old connection
+    connectDatabase :: MVar Database.PostgreSQL.LibPQ.Connection -> IO String -> IO String -> IO String -> IO String -> IO String -> IO ()
+    connectDatabase conn host' port' dbname' user' password' = do
+        host     <- host'
+        port     <- port'
+        dbname   <- dbname'
+        user     <- user'
+        password <- password'
+        let connParams = printf "host='%s' port=%s dbname='%s' user='%s' password='%s'" host port dbname user password
         println connParams
         newConn <- connectdb $ BS.pack connParams 
         putMVar conn newConn --conn <- connectdb $ BS.pack connParams
         return ()
 
-      where
-        connParams :: String;
-        connParams = printf "host='%s' port=%s dbname='%s' user='%s' password='%s'" h p db u pass;
+    --checkConnection :: MVar Database.PostgreSQL.LibPQ.Connection -> <frame type here> -> IO ()
+    checkConnection connection frame
+      = do
+        checked <- readMVar connection >>= status
+        case checked of
+          ConnectionOk -> do
+            println "Succesfully connected to db"
+            close frame
+            --readMVar connection >>= status
+          _ -> do
+            println "Connection failed!"
 
 
 gui :: MVar Database.PostgreSQL.LibPQ.Connection -> IO ()
@@ -214,7 +232,8 @@ gui boxedConn
        textCtrlMakeLogActiveTarget textlog
 
        
-       connectButton     <- button p [text := "Connect", on command := do {guiConnection boxedConn; checkConnection boxedConn;}]       
+       connectButton     <- button p [text := "Connect", on command := do {guiConnection boxedConn;}]       
+       executeButton     <- button p [text := "Execute", on command := do {loop =<< readMVar boxedConn;}]
        exitButton     <- button p [text := "Exit", on command := do { finishConnection boxedConn; close f; }] --TODO finish conn?????
        
        logMessage "logging enabled"          
@@ -223,14 +242,14 @@ gui boxedConn
        g <- gridCtrl p []
        gridSetGridLineColour g (colorSystem Color3DFace)
        gridSetCellHighlightColour g black
-       --appendColumns g (head names)
-       --appendRows    g (map show [1..length (tail names)])
-       --mapM_ (setRow g) (zip [0..] (tail names))
-       --gridAutoSize g
+       appendColumns g (head names)
+       appendRows    g (map show [1..length (tail names)])
+       mapM_ (setRow g) (zip [0..] (tail names))
+       gridAutoSize g
        
        -- layout
        set f [layout := container p $ column 5 [fill (dynamic (widget g))
-                                 ,row 0 [widget connectButton, widget exitButton]
+                                 ,row 0 [widget connectButton, widget exitButton, widget executeButton]
                                  ,hfill $ minsize (sz 200 100) $ widget textlog
                                  
                                                ]
@@ -240,26 +259,22 @@ gui boxedConn
        return ()
 
   where
-    checkConnection :: MVar Database.PostgreSQL.LibPQ.Connection -> IO ()
-    checkConnection connection
-      = do
-        checked <- readMVar connection >>= status
-        case checked of
-          ConnectionOk -> do
-            println "Succesfully connected to db"
-            --readMVar connection >>= status
-          _ -> do
-            println "Connection failed!"
+    
     finishConnection :: MVar Database.PostgreSQL.LibPQ.Connection -> IO ()
     finishConnection connection
       = do
-        readMVar connection >>= finish
+      con <- tryReadMVar connection
+      case con of
+        Just x -> do
+          finish x
+          println "Connection closed successfully"
+        Nothing -> pure ()
 
 names :: [[String]]
 names
-  = [["First Name", "Last Name"]
-    ,["Daan","Leijen"],["Arjan","van IJzendoorn"]
-    ,["Martijn","Schrage"],["Andres","Loh"]]
+  = [["First Name", "Last Name", "INTEGER"]
+    ,["Daan","Leijen", "1"],["Arjan","van IJzendoorn", "2"]
+    ,["Martijn","Schrage", "3"],["Andres","Loh", "4"]]
 
 
 setRow :: Grid a -> (Int, [String]) -> IO ()
