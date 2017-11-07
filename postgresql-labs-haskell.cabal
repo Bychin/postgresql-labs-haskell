@@ -23,8 +23,6 @@ library
                      , time
                      , postgresql-libpq
                      , bytestring
-                     , wx
-                     , wxcore
   exposed-modules:       Timer, Common
   default-language:    Haskell2010
 
@@ -39,8 +37,6 @@ executable cmd
                      , time
                      , postgresql-libpq
                      , bytestring
-                     , wx
-                     , wxcore
                      , postgresql-labs-haskell
                      
   default-language:    Haskell2010
@@ -56,8 +52,6 @@ executable gui
                      , time
                      , postgresql-libpq
                      , bytestring
-                     , wx
-                     , wxcore
                      , postgresql-labs-haskell
   default-language:    Haskell2010
 

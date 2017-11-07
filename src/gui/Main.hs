@@ -15,13 +15,9 @@ import Data.List
 import Text.Printf --printf
 import Control.Concurrent.MVar
 
-import Graphics.UI.WX --base
-import Graphics.UI.WXCore hiding (Event) --low level
---import Graphics.UI.WX.Event
 
 
-process line{-cur line-} conn{-connection handle-} = do
- 
+
 
   mresult <- exec conn $ BS.pack line
   case mresult of
@@ -308,3 +304,4 @@ appendRows g labels
   = do n <- gridGetNumberRows g
        _ <- gridAppendRows g (length labels) True
        mapM_ (\(i, label_) -> gridSetRowLabelValue g i label_) (zip [n..] labels)
+

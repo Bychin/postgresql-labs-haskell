@@ -1,6 +1,6 @@
 #! /bin/bash
 
-image_name=my_postgresql
+image_name=eg_postgresql
 container_name=pg_test
 commands_for_sql=./db-setup-commands.sql
 termination="sudo docker stop $container_name"
@@ -42,6 +42,11 @@ else
   exit 1
 fi
 
+prop_file="properties.txt"
+touch $prop_file
+printf "$host\n$port" > $prop_file
+
+
 setter1="./db-setter.sh $host $port docker docker docker cmd"
 setter2="./db-setter.sh $host $port docker docker docker gui"
 if $setter1; $setter2
@@ -66,12 +71,14 @@ else
   echo -e "${YELLOW}WARNING: Cannot build Main.hs${NC}"
 fi
 
+
 echo "Enter 'stop' to stop container."
 while [[ 1 -eq 1 ]]
 do
   read decision
   if [[ $decision == "stop" ]]
   then
+    rm $prop_file
     echo -e "${GREEN}[8] Stopping docker container...${NC}"
     $termination 1> /dev/null
     sleep 1
