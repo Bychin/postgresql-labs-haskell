@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings, TemplateHaskell, QuasiQuotes#-}
+{-# LANGUAGE OverloadedStrings, TemplateHaskell, QuasiQuotes, FlexibleContexts #-} --remove FlexibleContexts
 
 
 module Main where
@@ -12,6 +12,8 @@ import Common
 import Control.Monad
 import Data.Ord
 import Data.List
+import Text.Printf --printf
+import Control.Concurrent.MVar
 
 import Graphics.UI.WX --base
 import Graphics.UI.WXCore hiding (Event) --low level
@@ -134,49 +136,124 @@ loop conn = do
 
 cmd :: IO ()
 cmd = do
-    conn <- connectdb "host='0.0.0.0' port=32826 dbname='docker' user='docker' password='docker'"
-    checked <- status conn
-    case checked of
-      ConnectionOk -> do
-        println "Succesfully connected to db"
-        loop conn
-      _ -> do
-        println "Connection failed!"
-    finish conn
-    println "Goodbye!"
+  conn <- connectdb "host='0.0.0.0' port=32768 dbname='docker' user='docker' password='docker'"
+  checked <- status conn
+  case checked of
+    ConnectionOk -> do
+      println "Succesfully connected to db"
+      loop conn
+    _ -> do
+      println "Connection failed!"
+  finish conn
+  println "Goodbye!"
 
 
 main :: IO ()
-main
-  = start gui
+main = do 
+  --conn <- connectdb ""
+  my_conn <- newEmptyMVar
+  start $ gui myConn
+  --finish conn
 
 
-gui :: IO ()
-gui 
-  = do f <- frame [text := "Grid test", visible := False] 
-           
-       -- use text control as logger
-       textlog <- textCtrl f [wrap := WrapNone, enabled := False] 
+guiConnection :: MVar Database.PostgreSQL.LibPQ.Connection -> IO ()
+guiConnection boxedConn 
+  = do 
+    f             <- frame       [text := "Setup connection"]
+    p             <- panel     f []  -- panel for color and tab management.
+    okButton      <- button    p [text := "Ok"] --TODO conn db!
+    cancelButton  <- button    p [text := "Cancel",  on command := close f]
+    hostInput     <- textEntry p [text := "0.0.0.0", alignment := AlignRight]
+    portInput     <- textEntry p [text := "32768",   alignment := AlignRight]
+    dbnameInput   <- textEntry p [text := "docker",  alignment := AlignRight]
+    userInput     <- textEntry p [text := "docker",  alignment := AlignRight]
+    passwordInput <- textEntry p [text := "docker",  alignment := AlignRight]
+
+    host     <- get hostInput text
+    port     <- get portInput text
+    dbname   <- get dbnameInput text
+    user     <- get userInput text
+    password <- get passwordInput text
+
+    set okButton [on command := do { connectDatabase boxedConn host port dbname user password; }]
+    --set s [on command := do{ i <- get s selection; set g [selection := i]} ]
+
+    set f [defaultButton := okButton
+          ,layout := container p $
+                     margin 5 $
+                     floatCentre $ column 0 [boxed "Connection" (grid 5 10 [[label "Host:", hfill $ widget hostInput]
+                                                                           ,[label "Port:", hfill $ widget portInput]
+                                                                           ,[label "DB Name:", hfill $ widget dbnameInput]
+                                                                           ,[label "User:", hfill $ widget userInput]
+                                                                           ,[label "Password:", hfill $ widget passwordInput]])
+                                            ,row 0 [widget okButton, widget cancelButton]]
+          ]
+    return ()
+
+  where
+    connectDatabase :: MVar Database.PostgreSQL.LibPQ.Connection -> String -> String -> String -> String -> String -> IO ()
+    connectDatabase conn h p db u pass
+      = do
+        --readMVar conn >>= finish --finish conn; -- in case of old connection
+        println connParams
+        newConn <- connectdb $ BS.pack connParams 
+        putMVar conn newConn --conn <- connectdb $ BS.pack connParams
+        return ()
+
+      where
+        connParams :: String;
+        connParams = printf "host='%s' port=%s dbname='%s' user='%s' password='%s'" h p db u pass;
+
+
+gui :: MVar Database.PostgreSQL.LibPQ.Connection -> IO ()
+gui boxedConn
+  = do f <- frame [text := "PostgreSQL Client"] 
+       p      <- panel  f []  -- panel for color and tab management.
+       
+       textlog <- textCtrl p [wrap := WrapNone, enabled := False]  -- use text control as logger
        textCtrlMakeLogActiveTarget textlog
-       logMessage "logging enabled"
-       logMessage "lolololol"             
+
+       
+       connectButton     <- button p [text := "Connect", on command := do {guiConnection boxedConn; checkConnection boxedConn;}]       
+       exitButton     <- button p [text := "Exit", on command := do { finishConnection boxedConn; close f; }] --TODO finish conn?????
+       
+       logMessage "logging enabled"          
 
        -- grids
-       g <- gridCtrl f []
+       g <- gridCtrl p []
        gridSetGridLineColour g (colorSystem Color3DFace)
        gridSetCellHighlightColour g black
-       appendColumns g (head names)
-       appendRows    g (map show [1..length (tail names)])
-       mapM_ (setRow g) (zip [0..] (tail names))
-       gridAutoSize g
+       --appendColumns g (head names)
+       --appendRows    g (map show [1..length (tail names)])
+       --mapM_ (setRow g) (zip [0..] (tail names))
+       --gridAutoSize g
        
        -- layout
-       set f [layout := column 5 [fill (dynamic (widget g))
-                                  ,hfill $ minsize (sz 20 80) $ widget textlog]
+       set f [layout := container p $ column 5 [fill (dynamic (widget g))
+                                 ,row 0 [widget connectButton, widget exitButton]
+                                 ,hfill $ minsize (sz 200 100) $ widget textlog
+                                 
+                                               ]
              ]       
        focusOn g
        set f [visible := True]  -- reduce flicker at startup.
        return ()
+
+  where
+    checkConnection :: MVar Database.PostgreSQL.LibPQ.Connection -> IO ()
+    checkConnection connection
+      = do
+        checked <- readMVar connection >>= status
+        case checked of
+          ConnectionOk -> do
+            println "Succesfully connected to db"
+            --readMVar connection >>= status
+          _ -> do
+            println "Connection failed!"
+    finishConnection :: MVar Database.PostgreSQL.LibPQ.Connection -> IO ()
+    finishConnection connection
+      = do
+        readMVar connection >>= finish
 
 names :: [[String]]
 names
