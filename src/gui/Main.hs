@@ -19,7 +19,7 @@ import Control.Concurrent.MVar
 import Graphics.UI.WX
 import Graphics.UI.WXCore hiding (Event)
 
-process line conn = do
+process line conn handleTable{-[[String]] -> IO-} = do
   mresult <- exec conn $ BS.pack line
   case mresult of
     Just result -> do
@@ -34,7 +34,18 @@ process line conn = do
           rowNum <- ntuples result
           colNum <- nfields result
 
+
           let
+            mkContentRow i = mapM (\j -> getvalue result i j >>= \(Just x) -> pure $ BS.unpack x) [0,1..colNum-1]
+            mkContent' i = if rowNum /= i
+              then do
+                _a <- mkContentRow i
+                _b <- mkContent' (i+1)
+                pure (_a : _b)
+              else pure []
+
+           
+            
             mkContentCol i = mapM (\j -> getvalue result j i >>= \(Just x) -> pure $ BS.unpack x) [0,1..rowNum-1]
             mkContent i = if colNum /= i  --usage mkList 0, returns table in this form : [[elems of col 0], [elems of col 1], ...]
               then do
@@ -64,6 +75,10 @@ process line conn = do
 
             putSpaces 0 = putStr "| "
             putSpaces n = do {putStr " "; putSpaces (n-1)}
+
+
+          handleTable =<< mkContent' 0 
+
 
           _content <- mkContent 0
           _head    <- mkHead 0
@@ -122,28 +137,14 @@ process line conn = do
   pure ()
   
 
-loop conn = do
+loop conn handler = do
   println $ "Enter your query or 'exit'"
   line <- getLine
   println $ "You entered: " ++ line
 
-  if line == "exit" then pure () else do {process line conn; loop conn}
+  if line == "exit" then pure () else do {process line conn handler; loop conn handler}
       
       
-
-cmd :: IO ()
-cmd = do
-  conn <- connectdb "host='0.0.0.0' port=32768 dbname='docker' user='docker' password='docker'"
-  checked <- status conn
-  case checked of
-    ConnectionOk -> do
-      println "Succesfully connected to db"
-      loop conn
-    _ -> do
-      println "Connection failed!"
-  finish conn
-  println "Goodbye!"
-
 
 main :: IO ()
 main = do 
@@ -230,7 +231,7 @@ gui boxedConn
 
        
        connectButton     <- button p [text := "Connect", on command := do {guiConnection boxedConn;}]       
-       executeButton     <- button p [text := "Execute", on command := do {loop =<< readMVar boxedConn;}]
+       executeButton     <- button p [text := "Execute", on command := do {con <- readMVar boxedConn; loop con (\_ -> pure ())}]
        exitButton     <- button p [text := "Exit", on command := do { finishConnection boxedConn; close f; }] --TODO finish conn?????
        
        logMessage "logging enabled"          
