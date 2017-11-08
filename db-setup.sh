@@ -1,6 +1,6 @@
 #! /bin/bash
 
-image_name=eg_postgresql
+image_name=my_postgresql
 container_name=pg_test
 commands_for_sql=./db-setup-commands.sql
 termination="sudo docker stop $container_name"
@@ -48,8 +48,8 @@ printf "$host\n$port" > $prop_file
 
 
 setter1="./db-setter.sh $host $port docker docker docker cmd"
-setter2="./db-setter.sh $host $port docker docker docker gui"
-if $setter1; $setter2
+#setter2="./db-setter.sh $host $port docker docker docker gui"
+if $setter1 #; $setter2
 then
   echo -e "${GREEN}[6] Main.hs was set up...${NC}"
 else
