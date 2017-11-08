@@ -223,31 +223,51 @@ guiConnection boxedConn
 
 gui :: MVar Database.PostgreSQL.LibPQ.Connection -> IO ()
 gui boxedConn
-  = do f <- frame [text := "PostgreSQL Client"] 
-       p      <- panel  f []  -- panel for color and tab management.
+  = do f             <- frame [text := "PostgreSQL Client"] 
+       p             <- panel  f []  -- panel for color and tab management.
        
-       textlog <- textCtrl p [wrap := WrapNone, enabled := False]  -- use text control as logger
-       textCtrlMakeLogActiveTarget textlog
+       -- grids
+       g             <- gridCtrl p []
+       gridSetGridLineColour g (colorSystem Color3DFace)
+       --gridSetCellHighlightColour g black
+       appendColumns g (head names2); -- appendColumns colsNames colsNum !!!
+       appendRows    g (map show [1..length (tail names2)]); -- appendRows rowsNum!!!
+       gridAutoSize g
 
-       
-       connectButton     <- button p [text := "Connect", on command := do {guiConnection boxedConn;}]       
-       executeButton     <- button p [text := "Execute", on command := do {con <- readMVar boxedConn; loop con (\_ -> pure ())}]
-       exitButton     <- button p [text := "Exit", on command := do { finishConnection boxedConn; close f; }] --TODO finish conn?????
-       
+       connectButton <- button p [text := "Connect", on command := do {guiConnection boxedConn;}]       
+       exitButton    <- button p [text := "Exit", on command := do { finishConnection boxedConn; close f; }]
+       clearButton   <- button p [text := "Clear", on command := gridClearGrid g]
+       executeButton <- button p [text := "Execute", on command := do { --con <- readMVar boxedConn; loop con (\_ -> pure ())
+          gridClearGrid g;
+          colsNum <- gridGetNumberCols g; --get current gridRowsNum & gridColsNum
+          rowsNum <- gridGetNumberRows g;
+          --execute query
+          --  length names2;
+          --  length $ head names2;
+          --compare with query-tuple size
+
+          if length names > rowsNum -- simple example
+            then do {_ <- gridAppendRows g (length names - colsNum) True; return (); }
+            else println "lol";--deleteCols g
+
+          --resize grid
+          --fill in data
+          mapM_ (setRow g) (zip [0..] (tail names));
+          gridAutoSize g;
+       }]
+
+
+       textlog       <- textCtrl p [wrap := WrapNone, enabled := False]  -- use text control as logger
+       textCtrlMakeLogActiveTarget textlog
        logMessage "logging enabled"          
 
-       -- grids
-       g <- gridCtrl p []
-       gridSetGridLineColour g (colorSystem Color3DFace)
-       gridSetCellHighlightColour g black
-       appendColumns g (head names)
-       appendRows    g (map show [1..length (tail names)])
-       mapM_ (setRow g) (zip [0..] (tail names))
-       gridAutoSize g
+       
+
+       
        
        -- layout
        set f [layout := container p $ column 5 [fill (dynamic (widget g))
-                                 ,row 0 [widget connectButton, widget exitButton, widget executeButton]
+                                 ,row 0 [widget connectButton, widget exitButton, widget executeButton, widget clearButton]
                                  ,hfill $ minsize (sz 200 100) $ widget textlog
                                  
                                                ]
@@ -271,8 +291,17 @@ gui boxedConn
 names :: [[String]]
 names
   = [["First Name", "Last Name", "INTEGER"]
-    ,["Daan","Leijen", "1"],["Arjan","van IJzendoorn", "2"]
-    ,["Martijn","Schrage", "3"],["Andres","Loh", "4"]]
+    ,["Daan","Leijen", "1"]
+    ,["Arjan","van IJzendoorn", "2"]
+    ,["Martijn","Schrage", "3"]
+    ,["Andres","Loh", "5"]]
+
+names2 :: [[String]] --delete this
+names2
+  = [["a","b", "c"]
+    ,["e","boy", "2"]
+    ,["Martijn","Schrage", "3"]
+    ,["Andres","Loh", "5"]]
 
 
 setRow :: Grid a -> (Int, [String]) -> IO ()
@@ -297,7 +326,8 @@ appendColumns _g []
 appendColumns g labels
   = do n <- gridGetNumberCols g
        _ <- gridAppendCols g (length labels) True
-       mapM_ (\(i, label_) -> gridSetColLabelValue g i label_) (zip [n..] labels)
+       --mapM_ (\(i, label_) -> gridSetColLabelValue g i label_) (zip [n..] labels)
+       return ()
 
 appendRows :: Grid a -> [String] -> IO ()
 appendRows _g []
@@ -305,5 +335,5 @@ appendRows _g []
 appendRows g labels
   = do n <- gridGetNumberRows g
        _ <- gridAppendRows g (length labels) True
-       mapM_ (\(i, label_) -> gridSetRowLabelValue g i label_) (zip [n..] labels)
-
+       --mapM_ (\(i, label_) -> gridSetRowLabelValue g i label_) (zip [n..] labels)
+       return ()
