@@ -4,7 +4,7 @@ image_name=my_postgresql
 container_name=pg_test
 commands_for_sql=./db-setup-commands.sql
 prop_file="properties.tmp"
-termination="sudo docker stop $container_name; rm $prop_file"
+termination="sudo docker stop $container_name"
 
 RED='\033[0;31m'
 YELLOW='\033[1;33m'
@@ -23,6 +23,7 @@ then
 else
   echo -e "${RED}ERROR: Cannot launch docker! Exiting!${NC}"
   $termination 1> /dev/null
+  rm $prop_file 2> /dev/null
   exit 1
 fi
 
@@ -34,6 +35,7 @@ then
 else
   echo -e "${RED}ERROR: Cannot make file or execute 'chmod' command! Exiting!${NC}"
   $termination 1> /dev/null
+  rm $prop_file 2> /dev/null
   exit 1
 fi
 
@@ -48,6 +50,7 @@ then
 else
   echo -e "${RED}ERROR: Cannot launch client! Exiting!${NC}"
   $termination 1> /dev/null
+  rm $prop_file 2> /dev/null
   exit 1
 fi
 
@@ -61,6 +64,7 @@ then
 else
   echo -e "${RED}ERROR: Troubles with db-setter.sh! Exiting!${NC}"
   $termination 1> /dev/null
+  rm $prop_file 2> /dev/null
   exit 1
 fi
 
@@ -86,9 +90,9 @@ do
   read decision
   if [[ $decision == "stop" ]]
   then
-    rm $prop_file
     echo -e "${GREEN}[8] Stopping docker container...${NC}"
     $termination 1> /dev/null
+    rm $prop_file 2> /dev/null
     sleep 1
     if sed -i "/$host:$port:docker:docker:docker/d" ~/.pgpass
     then
