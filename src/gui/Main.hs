@@ -179,8 +179,6 @@ guiConnection boxedConn = do
                                   (get passwordInput text)
         checkConnection boxedConn f]
 
-    --set s [on command := do{ i <- get s selection; set g [selection := i]} ]
-
     set f [defaultButton := okButton
           ,layout := container p $
                      margin 5 $
@@ -221,55 +219,64 @@ guiConnection boxedConn = do
 
 gui :: MVar Database.PostgreSQL.LibPQ.Connection -> IO ()
 gui boxedConn = do 
-    f             <- frame [text := "PostgreSQL Client"] 
-    p             <- panel  f []  -- panel for color and tab management.
-    textlog       <- textCtrl p [wrap := WrapNone, enabled := False]  -- use text control as logger
+    f             <- frame [text := "PostgreSQL Client", visible := False] 
+    p1            <- panel f [visible := False] -- TODO rename
+    p             <- panel  f []
+    textlog       <- textCtrl p [wrap := WrapNone, enabled := False] -- use text control as logger
     textCtrlMakeLogActiveTarget textlog
     logMessage "Logging was enabled"
 
-    g             <- gridCtrl p []
+    g             <- gridCtrl p1 []
     gridSetGridLineColour g (colorSystem Color3DFace)
     --gridSetCellHighlightColour g black
 
-    --appendColumns g (head names);                        --  / Init insertion, remove this
+    --appendColumns g (head names);                        --  / Init insertion, TODO remove this
     --appendRows    g (map show [1..length (tail names)]); -- /
     --mapM_ (setRow g) (zip [0..] (tail names));           --/ 
 
+    queryInput    <- textEntry p [text := ""]
     connectButton <- button p [text := "Connect", on command := do { guiConnection boxedConn; }]       
     exitButton    <- button p [text := "Exit", on command := do { finishConnection boxedConn; close f; }]
-    clearButton   <- button p [text := "Clear", on command := do { clearAllGrid g; logMessage "Grid was cleared"; }] -- better deletion of the table ???
+    clearButton   <- button p [text := "Clear", on command := do { clearAllGrid g p1; logMessage "Grid was cleared"; }] -- better deletion of the table ???
     executeButton <- button p [text := "Execute", on command := do { 
         --con <- readMVar boxedConn; loop con (\_ -> pure ())
-        clearAllGrid g;
+        clearAllGrid g p1;
 
         -- execute query, it's format should be [[String]], every element [] - row of the table, head - col's names
+        -- result <- executeQuery boxedConn (get queryInput text) -- TODO finish this func
 
         appendColumns g (head names2);
         appendRows    g (map show [1..length (tail names2)]);
         mapM_ (setRow g) (zip [0..] (tail names2));  
 
         gridAutoSize g;
+        showPanel p1;
     }]
 
-    executeButton2 <- button p [text := "Execute2", on command := do { -- REMOVE THIS
-        clearAllGrid g;
+    executeButton2 <- button p [text := "Execute2", on command := do { -- TODO remove this
+        clearAllGrid g p1;
         appendColumns g (head names);
         appendRows    g (map show [1..length (tail names)]);
         mapM_ (setRow g) (zip [0..] (tail names));  
         gridAutoSize g;
+        showPanel p1;
     }] --          
 
-    -- layout
-    set f [ layout := container p $ 
-                      column 5 [fill (dynamic (widget g))
-                               ,row 0 [ widget connectButton
+    set f [ layout := grid 5 5 [
+                    [ container p $ alignBottom $
+                      column 5 [--fill (dynamic (widget g)),
+                                row 0 [ widget connectButton
                                       , widget exitButton
                                       , widget executeButton
                                       , widget clearButton 
-                                      , widget executeButton2 ] -- REMOVE THIS
+                                      , widget executeButton2 ] -- TODO remove this
+                               ,row 1 [ hfill $ widget queryInput ] 
                                ,hfill $ minsize (sz 200 100) $ widget textlog   
                                ]
-          , clientSize := sz 800 800]       
+                    ],
+                    [ container p1 $ column 5 [fill $ dynamic $ widget g] ]
+                      ]
+          , clientSize := sz 400 600]       
     focusOn g
     set f [visible := True]  -- reduce flicker at startup.
     return ()
@@ -277,16 +284,23 @@ gui boxedConn = do
   where
     finishConnection :: MVar Database.PostgreSQL.LibPQ.Connection -> IO ()
     finishConnection connection = do
-        con <- tryReadMVar connection
-        case con of
+        conn <- tryReadMVar connection
+        case conn of
           Just x -> do
             finish x
-            println "Connection closed successfully"
+            println "Connection was closed successfully"
           Nothing -> pure ()
 
-    clearAllGrid :: Grid () -> IO ()
-    clearAllGrid grid = do
+    hidePanel :: Panel () -> IO ()
+    hidePanel panel = set panel [ visible := False ]
+
+    showPanel :: Panel () -> IO ()
+    showPanel panel = set panel [ visible := True ]
+
+    clearAllGrid :: Grid () -> Panel () -> IO ()
+    clearAllGrid grid panel = do
         gridClearGrid grid
+        hidePanel panel
         colsNum <- gridGetNumberCols grid
         rowsNum <- gridGetNumberRows grid
         if colsNum > 0 && rowsNum > 0
@@ -295,6 +309,10 @@ gui boxedConn = do
                 gridDeleteCols grid 0 (colsNum + 1) True
                 return ()
             else return ()
+
+    --executeQuery :: MVar Database.PostgreSQL.LibPQ.Connection -> IO String -> [[String]]
+    --executeQuery connection query' = do
+        --query <- query'
 
     names :: [[String]] -- remove this
     names = 
@@ -313,10 +331,6 @@ gui boxedConn = do
         , ["this","row", "last"]
         ]
 
-    setRow :: Grid a -> (Int, [String]) -> IO ()
-    setRow g (row_, values)
-        = mapM_ (\(col,value_) -> gridSetCellValue g row_ col value_) (zip [0..] values)
-
     gridCtrl :: Window a -> [Prop (Grid ())] -> IO (Grid ())
     gridCtrl parent_ props_
       = feed2 props_ 0 $
@@ -326,6 +340,10 @@ gui boxedConn = do
             set g props'
             gridEnableEditing g False
             return g
+
+    setRow :: Grid a -> (Int, [String]) -> IO ()
+    setRow g (row_, values)
+        = mapM_ (\(col,value_) -> gridSetCellValue g row_ col value_) (zip [0..] values)
 
     appendColumns :: Grid a -> [String] -> IO ()
     appendColumns _g []  = return ()
