@@ -148,18 +148,16 @@ loop conn handler = do
 
 main :: IO ()
 main = do 
-  --conn <- connectdb ""
-  myConn <- newEmptyMVar
-  start $ gui myConn
-  --finish conn
+    --conn <- connectdb ""
+    myConn <- newEmptyMVar
+    start $ gui myConn
+    --finish conn
 
-
-guiConnection :: MVar Database.PostgreSQL.LibPQ.Connection -> IO ()
-guiConnection boxedConn 
-  = do 
+guiConnection :: MVar Database.PostgreSQL.LibPQ.Connection -> IO () -- return bool for logger from checkConnection
+guiConnection boxedConn = do 
     f             <- frame       [text := "Setup connection"]
-    p             <- panel     f []  -- panel for color and tab management.
-    okButton      <- button    p [text := "Ok"] --TODO conn db!
+    p             <- panel     f []
+    okButton      <- button    p [text := "Ok"]
     cancelButton  <- button    p [text := "Cancel",  on command := close f]
     hostInput     <- textEntry p [text := "0.0.0.0", alignment := AlignRight]
     portInput     <- textEntry p [text := "32768",   alignment := AlignRight]
@@ -173,22 +171,23 @@ guiConnection boxedConn
     user     <- get userInput text
     password <- get passwordInput text
 
-    set okButton [on command :=
-                  do connectDatabase boxedConn (get hostInput text)
-                                               (get portInput text)
-                                               (get dbnameInput text)
-                                               (get userInput text)
-                                               (get passwordInput text)
-                     checkConnection boxedConn f]
+    set okButton [on command := do 
+        connectDatabase boxedConn (get hostInput text)
+                                  (get portInput text)
+                                  (get dbnameInput text)
+                                  (get userInput text)
+                                  (get passwordInput text)
+        checkConnection boxedConn f]
+
     --set s [on command := do{ i <- get s selection; set g [selection := i]} ]
 
     set f [defaultButton := okButton
           ,layout := container p $
                      margin 5 $
-                     floatCentre $ column 0 [boxed "Connection" (grid 5 10 [[label "Host:", hfill $ widget hostInput]
-                                                                           ,[label "Port:", hfill $ widget portInput]
-                                                                           ,[label "DB Name:", hfill $ widget dbnameInput]
-                                                                           ,[label "User:", hfill $ widget userInput]
+                     floatCentre $ column 0 [boxed "Connection" (grid 5 10 [[label "Host:",     hfill $ widget hostInput]
+                                                                           ,[label "Port:",     hfill $ widget portInput]
+                                                                           ,[label "DB Name:",  hfill $ widget dbnameInput]
+                                                                           ,[label "User:",     hfill $ widget userInput]
                                                                            ,[label "Password:", hfill $ widget passwordInput]])
                                             ,row 0 [widget okButton, widget cancelButton]]
           ]
@@ -205,12 +204,11 @@ guiConnection boxedConn
         let connParams = printf "host='%s' port=%s dbname='%s' user='%s' password='%s'" host port dbname user password
         println connParams
         newConn <- connectdb $ BS.pack connParams 
-        putMVar conn newConn --conn <- connectdb $ BS.pack connParams
+        putMVar conn newConn
         return ()
 
-    --checkConnection :: MVar Database.PostgreSQL.LibPQ.Connection -> <frame type here> -> IO ()
-    checkConnection connection frame
-      = do
+    --checkConnection :: MVar Database.PostgreSQL.LibPQ.Connection -> <frame type here> -> IO () -- return bool for logger
+    checkConnection connection frame = do
         checked <- readMVar connection >>= status
         case checked of
           ConnectionOk -> do
@@ -222,118 +220,125 @@ guiConnection boxedConn
 
 
 gui :: MVar Database.PostgreSQL.LibPQ.Connection -> IO ()
-gui boxedConn
-  = do f             <- frame [text := "PostgreSQL Client"] 
-       p             <- panel  f []  -- panel for color and tab management.
-       
-       -- grids
-       g             <- gridCtrl p []
-       gridSetGridLineColour g (colorSystem Color3DFace)
-       --gridSetCellHighlightColour g black
-       appendColumns g (head names2); -- appendColumns colsNames colsNum !!!
-       appendRows    g (map show [1..length (tail names2)]); -- appendRows rowsNum!!!
-       gridAutoSize g
+gui boxedConn = do 
+    f             <- frame [text := "PostgreSQL Client"] 
+    p             <- panel  f []  -- panel for color and tab management.
+    textlog       <- textCtrl p [wrap := WrapNone, enabled := False]  -- use text control as logger
+    textCtrlMakeLogActiveTarget textlog
+    logMessage "Logging was enabled"
 
-       connectButton <- button p [text := "Connect", on command := do {guiConnection boxedConn;}]       
-       exitButton    <- button p [text := "Exit", on command := do { finishConnection boxedConn; close f; }]
-       clearButton   <- button p [text := "Clear", on command := gridClearGrid g]
-       executeButton <- button p [text := "Execute", on command := do { --con <- readMVar boxedConn; loop con (\_ -> pure ())
-          gridClearGrid g;
-          colsNum <- gridGetNumberCols g; --get current gridRowsNum & gridColsNum
-          rowsNum <- gridGetNumberRows g;
-          --execute query
-          --  length names2;
-          --  length $ head names2;
-          --compare with query-tuple size
+    g             <- gridCtrl p []
+    gridSetGridLineColour g (colorSystem Color3DFace)
+    --gridSetCellHighlightColour g black
 
-          if length names > rowsNum -- simple example
-            then do {_ <- gridAppendRows g (length names - colsNum) True; return (); }
-            else println "lol";--deleteCols g
+    --appendColumns g (head names);                        --  / Init insertion, remove this
+    --appendRows    g (map show [1..length (tail names)]); -- /
+    --mapM_ (setRow g) (zip [0..] (tail names));           --/ 
 
-          --resize grid
-          --fill in data
-          mapM_ (setRow g) (zip [0..] (tail names));
-          gridAutoSize g;
-       }]
+    connectButton <- button p [text := "Connect", on command := do { guiConnection boxedConn; }]       
+    exitButton    <- button p [text := "Exit", on command := do { finishConnection boxedConn; close f; }]
+    clearButton   <- button p [text := "Clear", on command := do { clearAllGrid g; logMessage "Grid was cleared"; }] -- better deletion of the table ???
+    executeButton <- button p [text := "Execute", on command := do { 
+        --con <- readMVar boxedConn; loop con (\_ -> pure ())
+        clearAllGrid g;
 
+        -- execute query, it's format should be [[String]], every element [] - row of the table, head - col's names
 
-       textlog       <- textCtrl p [wrap := WrapNone, enabled := False]  -- use text control as logger
-       textCtrlMakeLogActiveTarget textlog
-       logMessage "logging enabled"          
+        appendColumns g (head names2);
+        appendRows    g (map show [1..length (tail names2)]);
+        mapM_ (setRow g) (zip [0..] (tail names2));  
 
-       
+        gridAutoSize g;
+    }]
 
-       
-       
-       -- layout
-       set f [layout := container p $ column 5 [fill (dynamic (widget g))
-                                 ,row 0 [widget connectButton, widget exitButton, widget executeButton, widget clearButton]
-                                 ,hfill $ minsize (sz 200 100) $ widget textlog
-                                 
-                                               ]
-             ]       
-       focusOn g
-       set f [visible := True]  -- reduce flicker at startup.
-       return ()
+    executeButton2 <- button p [text := "Execute2", on command := do { -- REMOVE THIS
+        clearAllGrid g;
+        appendColumns g (head names);
+        appendRows    g (map show [1..length (tail names)]);
+        mapM_ (setRow g) (zip [0..] (tail names));  
+        gridAutoSize g;
+    }] --          
+
+    -- layout
+    set f [ layout := container p $ 
+                      column 5 [fill (dynamic (widget g))
+                               ,row 0 [ widget connectButton
+                                      , widget exitButton
+                                      , widget executeButton
+                                      , widget clearButton 
+                                      , widget executeButton2 ] -- REMOVE THIS
+                               ,hfill $ minsize (sz 200 100) $ widget textlog   
+                               ]
+          , clientSize := sz 800 800]       
+    focusOn g
+    set f [visible := True]  -- reduce flicker at startup.
+    return ()
 
   where
-    
     finishConnection :: MVar Database.PostgreSQL.LibPQ.Connection -> IO ()
-    finishConnection connection
-      = do
-      con <- tryReadMVar connection
-      case con of
-        Just x -> do
-          finish x
-          println "Connection closed successfully"
-        Nothing -> pure ()
+    finishConnection connection = do
+        con <- tryReadMVar connection
+        case con of
+          Just x -> do
+            finish x
+            println "Connection closed successfully"
+          Nothing -> pure ()
 
-names :: [[String]]
-names
-  = [["First Name", "Last Name", "INTEGER"]
-    ,["Daan","Leijen", "1"]
-    ,["Arjan","van IJzendoorn", "2"]
-    ,["Martijn","Schrage", "3"]
-    ,["Andres","Loh", "5"]]
+    clearAllGrid :: Grid () -> IO ()
+    clearAllGrid grid = do
+        gridClearGrid grid
+        colsNum <- gridGetNumberCols grid
+        rowsNum <- gridGetNumberRows grid
+        if colsNum > 0 && rowsNum > 0
+            then do
+                gridDeleteRows grid 0 (rowsNum + 1) True
+                gridDeleteCols grid 0 (colsNum + 1) True
+                return ()
+            else return ()
 
-names2 :: [[String]] --delete this
-names2
-  = [["a","b", "c"]
-    ,["e","boy", "2"]
-    ,["Martijn","Schrage", "3"]
-    ,["Andres","Loh", "5"]]
+    names :: [[String]] -- remove this
+    names = 
+        [ ["First Name", "Last Name", "INTEGER"]
+        , ["Daan","Leijen", "1"]
+        , ["Arjan","van IJzendoorn", "2"]
+        , ["Martijn","Schrage", "3"]
+        , ["Andres","Loh", "5"]
+        ]
 
+    names2 :: [[String]] -- remove this
+    names2 = 
+        [ ["Header1","Header2", "Header3"]
+        , ["This","is", "testdata"]
+        , ["some","new", "text"]
+        , ["this","row", "last"]
+        ]
 
-setRow :: Grid a -> (Int, [String]) -> IO ()
-setRow g (row_, values)
-  = mapM_ (\(col,value_) -> gridSetCellValue g row_ col value_) (zip [0..] values)
+    setRow :: Grid a -> (Int, [String]) -> IO ()
+    setRow g (row_, values)
+        = mapM_ (\(col,value_) -> gridSetCellValue g row_ col value_) (zip [0..] values)
 
+    gridCtrl :: Window a -> [Prop (Grid ())] -> IO (Grid ())
+    gridCtrl parent_ props_
+      = feed2 props_ 0 $
+        initialWindow $ \id_ rect' -> \props' flags -> do 
+            g <- gridCreate parent_ id_ rect' flags
+            gridCreateGrid g 0 0 0
+            set g props'
+            gridEnableEditing g False
+            return g
 
+    appendColumns :: Grid a -> [String] -> IO ()
+    appendColumns _g []  = return ()
+    appendColumns  g labels = do 
+        n <- gridGetNumberCols g
+        _ <- gridAppendCols g (length labels) True
+        mapM_ (\(i, label_) -> gridSetColLabelValue g i label_) (zip [n..] labels) -- setups col's names
+        return ()
 
-gridCtrl :: Window a -> [Prop (Grid ())] -> IO (Grid ())
-gridCtrl parent_ props_
-  = feed2 props_ 0 $
-    initialWindow $ \id_ rect' -> \props' flags ->
-    do g <- gridCreate parent_ id_ rect' flags
-       gridCreateGrid g 0 0 0
-       set g props'
-       gridEnableEditing g False
-       return g
-
-appendColumns :: Grid a -> [String] -> IO ()
-appendColumns _g []
-  = return ()
-appendColumns g labels
-  = do n <- gridGetNumberCols g
-       _ <- gridAppendCols g (length labels) True
-       --mapM_ (\(i, label_) -> gridSetColLabelValue g i label_) (zip [n..] labels)
-       return ()
-
-appendRows :: Grid a -> [String] -> IO ()
-appendRows _g []
-  = return ()
-appendRows g labels
-  = do n <- gridGetNumberRows g
-       _ <- gridAppendRows g (length labels) True
-       --mapM_ (\(i, label_) -> gridSetRowLabelValue g i label_) (zip [n..] labels)
-       return ()
+    appendRows :: Grid a -> [String] -> IO ()
+    appendRows _g [] = return ()
+    appendRows  g labels = do 
+        n <- gridGetNumberRows g
+        _ <- gridAppendRows g (length labels) True
+        --mapM_ (\(i, label_) -> gridSetRowLabelValue g i label_) (zip [n..] labels) -- row's names ???
+        return ()
