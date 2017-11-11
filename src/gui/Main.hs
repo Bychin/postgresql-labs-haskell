@@ -205,7 +205,7 @@ guiConnection boxedConn = do
         putMVar conn newConn
         return ()
 
-    --checkConnection :: MVar Database.PostgreSQL.LibPQ.Connection -> <frame type here> -> IO () -- return bool for logger
+    checkConnection :: MVar Database.PostgreSQL.LibPQ.Connection -> Frame () -> IO () -- return bool for logger
     checkConnection connection frame = do
         checked <- readMVar connection >>= status
         case checked of
@@ -215,6 +215,12 @@ guiConnection boxedConn = do
             --readMVar connection >>= status
           _ -> do
             println "Connection failed!"
+
+    {-setupHost :: String -> IO ()
+    setupHost filePath = do
+        answer <- lines =<< readFile filePath
+        println answer
+        return ()-}
 
 
 gui :: MVar Database.PostgreSQL.LibPQ.Connection -> IO ()
@@ -234,11 +240,23 @@ gui boxedConn = do
     --appendRows    g (map show [1..length (tail names)]); -- /
     --mapM_ (setRow g) (zip [0..] (tail names));           --/ 
 
+    tablesText    <- staticText p []
     queryInput    <- textEntry p [text := ""]
-    connectButton <- button p [text := "Connect", on command := do { guiConnection boxedConn; }]       
+    connectButton <- button p [text := "Connect", on command := do { guiConnection boxedConn; value <- getTablesList boxedConn; set tablesText [text := value]; }]       
     exitButton    <- button p [text := "Exit", on command := do { finishConnection boxedConn; close f; }]
-    clearButton   <- button p [text := "Clear", on command := do { clearAllGrid g p1; logMessage "Grid was cleared"; }] -- better deletion of the table ???
-    executeButton <- button p [text := "Execute", on command := do { 
+    clearButton   <- button p [text := "Clear", on command := do { clearAllGrid g p1; set tablesText [text := ""]; logMessage "Grid was cleared"; }] -- better deletion of the table ???
+    executeButton <- button p [text := "Execute"]
+
+    executeButton2 <- button p [text := "Execute2", on command := do { -- TODO remove this
+        clearAllGrid g p1;
+        appendColumns g (head names);
+        appendRows    g (map show [1..length (tail names)]);
+        mapM_ (setRow g) (zip [0..] (tail names));  
+        gridAutoSize g;
+        showPanel p1;
+    }] --          
+
+    set executeButton [on command := do { 
         --con <- readMVar boxedConn; loop con (\_ -> pure ())
         clearAllGrid g p1;
 
@@ -251,16 +269,10 @@ gui boxedConn = do
 
         gridAutoSize g;
         showPanel p1;
+        set f [ clientSize := sz 400 599 ];
+        value <- getTablesList boxedConn;
+        set tablesText [text := value];
     }]
-
-    executeButton2 <- button p [text := "Execute2", on command := do { -- TODO remove this
-        clearAllGrid g p1;
-        appendColumns g (head names);
-        appendRows    g (map show [1..length (tail names)]);
-        mapM_ (setRow g) (zip [0..] (tail names));  
-        gridAutoSize g;
-        showPanel p1;
-    }] --          
 
     set f [ layout := grid 5 5 [
                     [ container p $ alignBottom $
@@ -271,6 +283,7 @@ gui boxedConn = do
                                       , widget clearButton 
                                       , widget executeButton2 ] -- TODO remove this
                                ,row 1 [ hfill $ widget queryInput ] 
+                               ,row 2 [ widget tablesText ]
                                ,hfill $ minsize (sz 200 100) $ widget textlog   
                                ]
                     ],
@@ -313,6 +326,25 @@ gui boxedConn = do
     --executeQuery :: MVar Database.PostgreSQL.LibPQ.Connection -> IO String -> [[String]]
     --executeQuery connection query' = do
         --query <- query'
+
+-- select tablename as table from pg_tables where schemaname = 'public';
+    getTablesList :: MVar Database.PostgreSQL.LibPQ.Connection -> IO String
+    getTablesList connection = do
+        conn <- tryReadMVar connection
+        case conn of
+          Just x -> do
+            let query = printf "select tablename as table from pg_tables where schemaname = 'public';"
+            mresult <- exec x $ BS.pack query
+            case mresult of
+                Just result -> do
+                    rowNum <- ntuples result
+                    colNum <- nfields result
+                    let mkContentCol i = mapM (\j -> getvalue result j i >>= \(Just x) -> pure $ BS.unpack x) [0,1..rowNum-1]
+                    content <- pure . concat =<< mkContentCol 0
+                    return content
+                Nothing -> pure []
+          Nothing -> pure [] 
+
 
     names :: [[String]] -- remove this
     names = 

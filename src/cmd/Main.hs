@@ -129,7 +129,7 @@ loop conn = do
 
 cmd :: IO ()
 cmd = do
-  conn <- connectdb "host='0.0.0.0' port=32773 dbname='docker' user='docker' password='docker'"
+  conn <- connectdb "host='0.0.0.0' port=32768 dbname='docker' user='docker' password='docker'"
   checked <- status conn
   case checked of
     ConnectionOk -> do
