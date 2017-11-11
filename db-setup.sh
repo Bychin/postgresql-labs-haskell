@@ -43,7 +43,7 @@ fi
 # Exporting data from commands_for_sql file to database through psql
 echo -e "${GREEN}[3] Launching PSQL client...${NC}"
 sleep 3
-if psql -h $host -p $port -d docker -U docker -w -f $commands_for_sql 1> /dev/null # No need in password because of .pgpass file
+if psql -h $host -p $port -d docker -U docker -W -f $commands_for_sql 1> /dev/null # No need in password because of .pgpass file
 then
   echo -e "${GREEN}[4] All data was added...${NC}"
   echo -e "${GREEN}[5] Client connection was closed...${NC}"

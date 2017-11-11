@@ -63,6 +63,16 @@ process line conn handleTable{-[[String]] -> IO-} = do
               else
                 pure []
 
+            mkHead'' i = do
+              if colNum /= i then do
+                _a <- fname result i >>= \(Just x) -> pure $ BS.unpack x
+                _b <- mkHead'' (i + 1)
+                pure $ _a : _b
+              else
+                pure []
+            mkHead' i = do
+              a <- mkHead'' i
+              pure [a]
 
             mergeContentAndHead [] [] = [] --this is needed later to calculate the max length of each column (including head !)
             mergeContentAndHead (con0 : con){-content-} ((head0 : _) : head){-head-} = (head0 : con0) : mergeContentAndHead con head
@@ -77,7 +87,9 @@ process line conn handleTable{-[[String]] -> IO-} = do
             putSpaces n = do {putStr " "; putSpaces (n-1)}
 
 
-          handleTable =<< mkContent' 0 
+          head' <- mkHead' 0
+          cont' <- mkContent' 0
+          handleTable $ head' ++ cont'
 
 
           _content <- mkContent 0
@@ -165,6 +177,19 @@ guiConnection boxedConn = do
     userInput     <- textEntry p [text := "docker",  alignment := AlignRight]
     passwordInput <- textEntry p [text := "docker",  alignment := AlignRight]
 
+
+    let
+      setupHost :: String -> IO ()
+      setupHost filePath = do
+        read <- pure . lines =<< readFile filePath
+        -- <host>\n<port> format
+        case read of
+          (_host : _port : _) -> do
+            set hostInput [text := _host]
+            set portInput [text := _port]
+          _ -> pure ()
+
+
     host     <- get hostInput text
     port     <- get portInput text
     dbname   <- get dbnameInput text
@@ -201,8 +226,9 @@ guiConnection boxedConn = do
         password <- password'
         let connParams = printf "host='%s' port=%s dbname='%s' user='%s' password='%s'" host port dbname user password
         println connParams
-        newConn <- connectdb $ BS.pack connParams 
-        putMVar conn newConn
+        newConn <- connectdb $ BS.pack connParams
+        tryTakeMVar conn
+        tryPutMVar conn newConn
         return ()
 
     checkConnection :: MVar Database.PostgreSQL.LibPQ.Connection -> Frame () -> IO () -- return bool for logger
@@ -210,17 +236,15 @@ guiConnection boxedConn = do
         checked <- readMVar connection >>= status
         case checked of
           ConnectionOk -> do
-            println "Succesfully connected to db"
+            
+            logMessage "Succesfully connected to db"
             close frame
             --readMVar connection >>= status
           _ -> do
-            println "Connection failed!"
+            tryTakeMVar connection
+            logMessage "Connection failed!"
 
-    {-setupHost :: String -> IO ()
-    setupHost filePath = do
-        answer <- lines =<< readFile filePath
-        println answer
-        return ()-}
+    
 
 
 gui :: MVar Database.PostgreSQL.LibPQ.Connection -> IO ()
@@ -247,32 +271,34 @@ gui boxedConn = do
     clearButton   <- button p [text := "Clear", on command := do { clearAllGrid g p1; set tablesText [text := ""]; logMessage "Grid was cleared"; }] -- better deletion of the table ???
     executeButton <- button p [text := "Execute"]
 
-    executeButton2 <- button p [text := "Execute2", on command := do { -- TODO remove this
-        clearAllGrid g p1;
-        appendColumns g (head names);
-        appendRows    g (map show [1..length (tail names)]);
-        mapM_ (setRow g) (zip [0..] (tail names));  
-        gridAutoSize g;
-        showPanel p1;
-    }] --          
+    
 
-    set executeButton [on command := do { 
-        --con <- readMVar boxedConn; loop con (\_ -> pure ())
-        clearAllGrid g p1;
+    set executeButton [on command := do 
+        boxedConn' <- tryReadMVar boxedConn
+        case boxedConn' of
+          Just boxedConn' -> do
+            --con <- readMVar boxedConn; loop con (\_ -> pure ())
+            query <- get queryInput text
+            process query boxedConn' ( \table -> do
+              clearAllGrid g p1
+              gridSetRowLabelSize g 0
 
-        -- execute query, it's format should be [[String]], every element [] - row of the table, head - col's names
-        -- result <- executeQuery boxedConn (get queryInput text) -- TODO finish this func
+              -- execute query, it's format should be [[String]], every element [] - row of the table, head - col's names
+              -- result <- executeQuery boxedConn (get queryInput text) -- TODO finish this func
 
-        appendColumns g (head names2);
-        appendRows    g (map show [1..length (tail names2)]);
-        mapM_ (setRow g) (zip [0..] (tail names2));  
+              appendColumns g (head table)
+              appendRows    g (map show [1..length (tail table)])
+              mapM_ (setRow g) (zip [0..] (tail table))
 
-        gridAutoSize g;
-        showPanel p1;
-        set f [ clientSize := sz 400 599 ];
-        value <- getTablesList boxedConn;
-        set tablesText [text := value];
-    }]
+              gridAutoSize g
+              showPanel p1
+              set f [ clientSize := sz 400 599 ] --TODO
+              value <- getTablesList boxedConn
+              set tablesText [text := value]
+                                             )
+           
+          Nothing -> return ()
+      ]
 
     set f [ layout := grid 5 5 [
                     [ container p $ alignBottom $
@@ -280,8 +306,7 @@ gui boxedConn = do
                                 row 0 [ widget connectButton
                                       , widget exitButton
                                       , widget executeButton
-                                      , widget clearButton 
-                                      , widget executeButton2 ] -- TODO remove this
+                                      , widget clearButton ] -- TODO remove this
                                ,row 1 [ hfill $ widget queryInput ] 
                                ,row 2 [ widget tablesText ]
                                ,hfill $ minsize (sz 200 100) $ widget textlog   
@@ -340,7 +365,7 @@ gui boxedConn = do
                     rowNum <- ntuples result
                     colNum <- nfields result
                     let mkContentCol i = mapM (\j -> getvalue result j i >>= \(Just x) -> pure $ BS.unpack x) [0,1..rowNum-1]
-                    content <- pure . concat =<< mkContentCol 0
+                    content <- pure . (intercalate ", ") =<< mkContentCol 0
                     return content
                 Nothing -> pure []
           Nothing -> pure [] 
