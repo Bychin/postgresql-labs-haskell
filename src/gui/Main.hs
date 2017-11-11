@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings, TemplateHaskell, QuasiQuotes, FlexibleContexts #-} --remove FlexibleContexts
+{-# LANGUAGE OverloadedStrings, TemplateHaskell, QuasiQuotes #-}
 
 
 module Main where
@@ -12,28 +12,27 @@ import Common
 import Control.Monad
 import Data.Ord
 import Data.List
-import Text.Printf --printf
+import Text.Printf -- printf
 import Control.Concurrent.MVar
-
 
 import Graphics.UI.WX
 import Graphics.UI.WXCore hiding (Event)
+
 
 process line conn handleTable{-[[String]] -> IO-} = do
   mresult <- exec conn $ BS.pack line
   case mresult of
     Just result -> do
       exec_status <- resultStatus result
-      println $ "Command status = " ++ show exec_status 
+      logMessage $ "Query status: " ++ show exec_status 
       case exec_status of
         FatalError -> do
           pure ()
-          resultErrorMessage result >>= \(Just x) -> (println . BS.unpack)x --bad show
+          resultErrorMessage result >>= \(Just x) -> (logMessage . BS.unpack)x --bad show
           
         TuplesOk -> do
           rowNum <- ntuples result
           colNum <- nfields result
-
 
           let
             mkContentRow i = mapM (\j -> getvalue result i j >>= \(Just x) -> pure $ BS.unpack x) [0,1..colNum-1]
@@ -44,8 +43,6 @@ process line conn handleTable{-[[String]] -> IO-} = do
                 pure (_a : _b)
               else pure []
 
-           
-            
             mkContentCol i = mapM (\j -> getvalue result j i >>= \(Just x) -> pure $ BS.unpack x) [0,1..rowNum-1]
             mkContent i = if colNum /= i  --usage mkList 0, returns table in this form : [[elems of col 0], [elems of col 1], ...]
               then do
@@ -53,7 +50,6 @@ process line conn handleTable{-[[String]] -> IO-} = do
                 _b <- mkContent (i + 1)
                 pure (_a : _b)
               else pure []
-
 
             mkHead i = do        --same as mkList but for entry names : [[name0], [name1], ...]
               if colNum /= i then do
@@ -74,127 +70,58 @@ process line conn handleTable{-[[String]] -> IO-} = do
               a <- mkHead'' i
               pure [a]
 
-            mergeContentAndHead [] [] = [] --this is needed later to calculate the max length of each column (including head !)
-            mergeContentAndHead (con0 : con){-content-} ((head0 : _) : head){-head-} = (head0 : con0) : mergeContentAndHead con head
-
-            lengthsFun [] = [] --returns list of this form : [max len of elems of column 0, max len of elems of column 1, ...]
-            lengthsFun (x : xs) = (length $ maximumBy (comparing length) x) : lengthsFun xs
-
-            putPluses 0 = putStr "+"
-            putPluses n = do {putStr "-"; putPluses (n-1)}
-
-            putSpaces 0 = putStr "| "
-            putSpaces n = do {putStr " "; putSpaces (n-1)}
-
-
           head' <- mkHead' 0
           cont' <- mkContent' 0
           handleTable $ head' ++ cont'
 
-
           _content <- mkContent 0
           _head    <- mkHead 0
-          let _lens =  lengthsFun $ mergeContentAndHead _content _head
-
-          let _CONST_SPACES = 3
-          
-          let
-            printRow [] [] = pure []  --print one row of the table, does not print \n at the end
-            printRow (x : xs){-table-} (l : ls){-lengths-} =
-              case x of
-                (e : es) -> do
-                  putStr e
-                  let elen = length e
-                  putSpaces (l - elen + _CONST_SPACES) 
-                  next <- printRow xs ls
-                  pure $ es : next
-                [] -> pure []
-
-            printCosmetics [] = pure () --bad realization for nice pixel-graphic output (---+---+)
-            printCosmetics (l : ls){-lengths-} = do
-               putPluses (l + 1 + _CONST_SPACES) 
-               next <- printCosmetics ls
-               pure ()
-
-            printTable [] = pure () --print full table (this is called for head and content separately)
-            printTable table = do
-              next <- printRow table _lens
-              case next of
-                (x : xs') ->
-                  case x of
-                   (_ : _) -> do
-                     putStr "\n"
-                     printTablePadded next
-                   [] -> pure ()
-                [] -> pure ()
-
-            printTablePadded [] = pure () --same as printTable but first column is padded with one ' '
-            printTablePadded table = do {putStr " "; printTable table}
-
-          
-          printTablePadded _head
-          putStr "\n"
-          printCosmetics _lens
-          putStr "\n"
-          printTablePadded _content
-          putStr "\n"
-
 
           pure ()
         _ -> pure ()
       
     Nothing ->
-      println "No result"
-  
+      logMessage "No result"
   pure ()
   
 
-loop conn handler = do
-  println $ "Enter your query or 'exit'"
-  line <- getLine
-  println $ "You entered: " ++ line
-
-  if line == "exit" then pure () else do {process line conn handler; loop conn handler}
-      
-      
-
 main :: IO ()
 main = do 
-    --conn <- connectdb ""
     myConn <- newEmptyMVar
     start $ gui myConn
-    --finish conn
 
-guiConnection :: MVar Database.PostgreSQL.LibPQ.Connection -> IO () -- return bool for logger from checkConnection
-guiConnection boxedConn = do 
+
+getTablesList :: MVar Database.PostgreSQL.LibPQ.Connection -> IO String
+getTablesList connection = do
+    conn <- tryReadMVar connection
+    case conn of
+      Just x -> do
+        let query = printf "select tablename as table from pg_tables where schemaname = 'public';"
+        mresult <- exec x $ BS.pack query
+        case mresult of
+            Just result -> do
+                rowNum <- ntuples result
+                colNum <- nfields result
+                let mkContentCol i = mapM (\j -> getvalue result j i >>= \(Just x) -> pure $ BS.unpack x) [0,1..rowNum-1]
+                content <- pure . (intercalate ", ") =<< mkContentCol 0
+                return content
+            Nothing -> pure []
+      Nothing -> pure []
+
+
+guiConnection :: MVar Database.PostgreSQL.LibPQ.Connection -> TextCtrl () -> IO ()
+guiConnection boxedConn tablesText = do 
     f             <- frame       [text := "Setup connection"]
     p             <- panel     f []
     okButton      <- button    p [text := "Ok"]
-    cancelButton  <- button    p [text := "Cancel",  on command := close f]
-    hostInput     <- textEntry p [text := "0.0.0.0", alignment := AlignRight]
-    portInput     <- textEntry p [text := "32768",   alignment := AlignRight]
-    dbnameInput   <- textEntry p [text := "docker",  alignment := AlignRight]
-    userInput     <- textEntry p [text := "docker",  alignment := AlignRight]
-    passwordInput <- textEntry p [text := "docker",  alignment := AlignRight]
+    cancelButton  <- button    p [text := "Cancel", on command := close f]
+    hostInput     <- textEntry p [                  alignment := AlignRight]
+    portInput     <- textEntry p [                  alignment := AlignRight]
+    dbnameInput   <- textEntry p [text := "docker", alignment := AlignRight]
+    userInput     <- textEntry p [text := "docker", alignment := AlignRight]
+    passwordInput <- textEntry p [text := "docker", alignment := AlignRight]
 
-
-    let
-      setupHost :: String -> IO ()
-      setupHost filePath = do
-        read <- pure . lines =<< readFile filePath
-        -- <host>\n<port> format
-        case read of
-          (_host : _port : _) -> do
-            set hostInput [text := _host]
-            set portInput [text := _port]
-          _ -> pure ()
-
-
-    host     <- get hostInput text
-    port     <- get portInput text
-    dbname   <- get dbnameInput text
-    user     <- get userInput text
-    password <- get passwordInput text
+    setupHost "/tmp/properties.tmp" hostInput portInput
 
     set okButton [on command := do 
         connectDatabase boxedConn (get hostInput text)
@@ -202,18 +129,21 @@ guiConnection boxedConn = do
                                   (get dbnameInput text)
                                   (get userInput text)
                                   (get passwordInput text)
-        checkConnection boxedConn f]
+        checkConnection boxedConn f
+        value <- getTablesList boxedConn
+        set tablesText [text := ("Table's names: " ++ value)];]
 
     set f [defaultButton := okButton
-          ,layout := container p $
-                     margin 5 $
-                     floatCentre $ column 0 [boxed "Connection" (grid 5 10 [[label "Host:",     hfill $ widget hostInput]
-                                                                           ,[label "Port:",     hfill $ widget portInput]
-                                                                           ,[label "DB Name:",  hfill $ widget dbnameInput]
-                                                                           ,[label "User:",     hfill $ widget userInput]
-                                                                           ,[label "Password:", hfill $ widget passwordInput]])
-                                            ,row 0 [widget okButton, widget cancelButton]]
+          ,layout := container p $ margin 10 $ floatCenter $
+                     column 5 [grid 10 5 [[label "Host:",    hfill $ widget hostInput]
+                                         ,[label "Port:",     hfill $ widget portInput]
+                                         ,[label "DB Name:",  hfill $ widget dbnameInput]
+                                         ,[label "User:",     hfill $ widget userInput]
+                                         ,[label "Password:", hfill $ widget passwordInput]]
+                              ,row 4 [widget okButton, widget cancelButton]]
+          ,clientSize := sz 100 200
           ]
+    focusOn okButton
     return ()
 
   where
@@ -225,18 +155,16 @@ guiConnection boxedConn = do
         user     <- user'
         password <- password'
         let connParams = printf "host='%s' port=%s dbname='%s' user='%s' password='%s'" host port dbname user password
-        println connParams
         newConn <- connectdb $ BS.pack connParams
         tryTakeMVar conn
         tryPutMVar conn newConn
         return ()
 
-    checkConnection :: MVar Database.PostgreSQL.LibPQ.Connection -> Frame () -> IO () -- return bool for logger
+    checkConnection :: MVar Database.PostgreSQL.LibPQ.Connection -> Frame () -> IO ()
     checkConnection connection frame = do
         checked <- readMVar connection >>= status
         case checked of
           ConnectionOk -> do
-            
             logMessage "Succesfully connected to db"
             close frame
             --readMVar connection >>= status
@@ -244,78 +172,86 @@ guiConnection boxedConn = do
             tryTakeMVar connection
             logMessage "Connection failed!"
 
-    
+    setupHost :: FilePath -> TextCtrl () -> TextCtrl () -> IO ()
+    setupHost filePath hostInput_ portInput_ = do
+        read <- pure . lines =<< readFile filePath
+        -- <host>\n<port> format
+        let index = findIndex (== '\\') (concat read)
+        case index of
+            Just index -> do
+                set hostInput_ [text := take index $ concat read]
+                set portInput_ [text := drop (index + 2) $ concat read]
+            Nothing -> pure ()
 
 
 gui :: MVar Database.PostgreSQL.LibPQ.Connection -> IO ()
 gui boxedConn = do 
     f             <- frame [text := "PostgreSQL Client", visible := False] 
-    p1            <- panel f [visible := False] -- TODO rename
-    p             <- panel  f []
-    textlog       <- textCtrl p [wrap := WrapNone, enabled := False] -- use text control as logger
+    pg            <- panel f [visible := False]
+    p             <- panel f []
+
+    textlog       <- textCtrl p [wrap := WrapNone]
     textCtrlMakeLogActiveTarget textlog
     logMessage "Logging was enabled"
 
-    g             <- gridCtrl p1 []
+    g             <- gridCtrl pg []
     gridSetGridLineColour g (colorSystem Color3DFace)
-    --gridSetCellHighlightColour g black
+    gridSetCellHighlightColour g black
 
-    --appendColumns g (head names);                        --  / Init insertion, TODO remove this
-    --appendRows    g (map show [1..length (tail names)]); -- /
-    --mapM_ (setRow g) (zip [0..] (tail names));           --/ 
-
-    tablesText    <- staticText p []
-    queryInput    <- textEntry p [text := ""]
-    connectButton <- button p [text := "Connect", on command := do { guiConnection boxedConn; value <- getTablesList boxedConn; set tablesText [text := value]; }]       
+    tablesText    <- textCtrl p [wrap := WrapNone, enabled := False]
+    queryInput    <- textCtrl p [wrap := WrapNone, text := ""]
+    noteInput     <- textCtrl p [wrap := WrapNone, text := ""]
+    connectButton <- button p [text := "Connect", on command := do { guiConnection boxedConn tablesText; }]       
     exitButton    <- button p [text := "Exit", on command := do { finishConnection boxedConn; close f; }]
-    clearButton   <- button p [text := "Clear", on command := do { clearAllGrid g p1; set tablesText [text := ""]; logMessage "Grid was cleared"; }] -- better deletion of the table ???
+    clearButton   <- button p [text := "Clear"]
     executeButton <- button p [text := "Execute"]
 
-    
+    set clearButton [on command := do
+        clearAllGrid g pg
+        set queryInput [text := ""]
+        set f [ clientSize := sz 500 400 ]
+        logMessage "Grid was cleared";
+        ]
 
     set executeButton [on command := do 
         boxedConn' <- tryReadMVar boxedConn
+        query <- get queryInput text
+        appendText noteInput $ query ++ "\n"
         case boxedConn' of
           Just boxedConn' -> do
-            --con <- readMVar boxedConn; loop con (\_ -> pure ())
-            query <- get queryInput text
+            logMessage query
             process query boxedConn' ( \table -> do
-              clearAllGrid g p1
-              gridSetRowLabelSize g 0
+                clearAllGrid g pg
+                gridSetRowLabelSize g 0
 
-              -- execute query, it's format should be [[String]], every element [] - row of the table, head - col's names
-              -- result <- executeQuery boxedConn (get queryInput text) -- TODO finish this func
+                appendColumns g (head table)
+                appendRows    g (map show [1..length (tail table)])
+                mapM_ (setRow g) (zip [0..] (tail table))
 
-              appendColumns g (head table)
-              appendRows    g (map show [1..length (tail table)])
-              mapM_ (setRow g) (zip [0..] (tail table))
-
-              gridAutoSize g
-              showPanel p1
-              set f [ clientSize := sz 400 599 ] --TODO
-              value <- getTablesList boxedConn
-              set tablesText [text := value]
+                gridAutoSize g
+                showPanel pg
+                set f [ clientSize := sz 500 700 ]
                                              )
+            value <- getTablesList boxedConn
+            set tablesText [text := ("Table's names: " ++ value)]
            
           Nothing -> return ()
-      ]
+        set queryInput [text := ""]
+        ]
 
     set f [ layout := grid 5 5 [
                     [ container p $ alignBottom $
-                      column 5 [--fill (dynamic (widget g)),
-                                row 0 [ widget connectButton
-                                      , widget exitButton
-                                      , widget executeButton
-                                      , widget clearButton ] -- TODO remove this
-                               ,row 1 [ hfill $ widget queryInput ] 
-                               ,row 2 [ widget tablesText ]
-                               ,hfill $ minsize (sz 200 100) $ widget textlog   
+                      column 5 [row 5 [widget connectButton, widget clearButton, alignRight $ widget exitButton]
+                               ,row 0 [hfill $ widget tablesText]
+                               ,row 5 [hfill $ widget queryInput, widget executeButton]
+                               ,row 0 [hfill $ minsize (sz 500 150) $ widget noteInput] 
+                               ,row 0 [hfill $ minsize (sz 500 100) $ widget textlog]
                                ]
                     ],
-                    [ container p1 $ column 5 [fill $ dynamic $ widget g] ]
+                    [ container pg $ column 5 [fill $ dynamic $ widget g] ]
                       ]
-          , clientSize := sz 400 600]       
-    focusOn g
+          , clientSize := sz 500 400]       
+    focusOn connectButton
     set f [visible := True]  -- reduce flicker at startup.
     return ()
 
@@ -326,7 +262,7 @@ gui boxedConn = do
         case conn of
           Just x -> do
             finish x
-            println "Connection was closed successfully"
+            logMessage "Connection was closed successfully"
           Nothing -> pure ()
 
     hidePanel :: Panel () -> IO ()
@@ -346,47 +282,7 @@ gui boxedConn = do
                 gridDeleteRows grid 0 (rowsNum + 1) True
                 gridDeleteCols grid 0 (colsNum + 1) True
                 return ()
-            else return ()
-
-    --executeQuery :: MVar Database.PostgreSQL.LibPQ.Connection -> IO String -> [[String]]
-    --executeQuery connection query' = do
-        --query <- query'
-
--- select tablename as table from pg_tables where schemaname = 'public';
-    getTablesList :: MVar Database.PostgreSQL.LibPQ.Connection -> IO String
-    getTablesList connection = do
-        conn <- tryReadMVar connection
-        case conn of
-          Just x -> do
-            let query = printf "select tablename as table from pg_tables where schemaname = 'public';"
-            mresult <- exec x $ BS.pack query
-            case mresult of
-                Just result -> do
-                    rowNum <- ntuples result
-                    colNum <- nfields result
-                    let mkContentCol i = mapM (\j -> getvalue result j i >>= \(Just x) -> pure $ BS.unpack x) [0,1..rowNum-1]
-                    content <- pure . (intercalate ", ") =<< mkContentCol 0
-                    return content
-                Nothing -> pure []
-          Nothing -> pure [] 
-
-
-    names :: [[String]] -- remove this
-    names = 
-        [ ["First Name", "Last Name", "INTEGER"]
-        , ["Daan","Leijen", "1"]
-        , ["Arjan","van IJzendoorn", "2"]
-        , ["Martijn","Schrage", "3"]
-        , ["Andres","Loh", "5"]
-        ]
-
-    names2 :: [[String]] -- remove this
-    names2 = 
-        [ ["Header1","Header2", "Header3"]
-        , ["This","is", "testdata"]
-        , ["some","new", "text"]
-        , ["this","row", "last"]
-        ]
+            else return () 
 
     gridCtrl :: Window a -> [Prop (Grid ())] -> IO (Grid ())
     gridCtrl parent_ props_
